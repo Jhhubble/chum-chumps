@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import Login from "./pages/Login";
-import Register from "./pages/register";
+import Register from "./pages/Register";
 import Header from "./components/Header";
 import GameCard from "./components/GameCard";
 import Standings from "./components/Standings";
