@@ -1,8 +1,10 @@
-function PickButton({ team, selected, onclick }) {
+function PickButton({ team, selected, onclick, disabled = false }) {
   const isSelected = selected === team;
+
   return (
-    <button 
+    <button
       onClick={onclick}
+      disabled={disabled}
       style={{
         backgroundColor: isSelected ? "#0f0f0f" : "#690fd8",
         color: "white",
@@ -10,7 +12,8 @@ function PickButton({ team, selected, onclick }) {
         padding: "10px",
         margin: "5px",
         borderRadius: "8px",
-        cursor: "pointer"
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       {team}

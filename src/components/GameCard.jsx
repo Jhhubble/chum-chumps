@@ -2,97 +2,214 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import PickButton from "./PickButton.jsx";
 
-const games = [{ 
-  home: "Michigan",
-  away: "Ohio State"
-  }, 
-  { 
-  home: "LSU",
-  away: "Alabama"
-  },
-  {
-  home: "Georgia",
-  away: "Florida"
-  },
-  {
-  home: "Georgia",
-  away: "Florida"
-  },
-  {
-  home: "Georgia",
-  away: "Florida"
-  }
-];
+
 
 
 function GameCard() {
-  const firstGame = games[0];
-  const secondGame = games[1];
-  const thirdGame = games[2];
-  const fourthGame = games[3];
-  const fifthGame = games[4];
-  const [selectedTeam1, setSelectedTeam1] = useState("");
-  const [selectedTeam2, setSelectedTeam2] = useState("");
-  const [selectedTeam3, setSelectedTeam3] = useState("");
-  const [selectedTeam4, setSelectedTeam4] = useState("");
-  const [selectedTeam5, setSelectedTeam5] = useState("");
-  function chooseTeam1(team) {
-    setSelectedTeam1(team);
+  const [featuredGames, setFeaturedGames] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesError, setGamesError] = useState("");
+  
+  const [featuredPicks, setFeaturedPicks] = useState({});
+  function chooseFeaturedTeam(gameId, team) {
+  setFeaturedPicks((currentPicks) => ({
+    ...currentPicks,
+    [gameId]: team,
+  }));
   }
-  function chooseTeam2(team) {
-    setSelectedTeam2(team);
-  }
-  function chooseTeam3(team) {
-    setSelectedTeam3(team);
-  }
-  function chooseTeam4(team) {
-    setSelectedTeam4(team);
-  }
-  function chooseTeam5(team) {
-    setSelectedTeam5(team);
-  }
+
   const [upsetOptions, setUpsetOptions] = useState([]);
   const [selectedSportsbook, setSelectedSportsbook] = useState("");
   const [upsetPick, setUpsetPick] = useState(null);
   const [isLoadingUpsets, setIsLoadingUpsets] = useState(true);
   const [upsetError, setUpsetError] = useState("");
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
+
+  const [savedPicks, setSavedPicks] = useState([]);
+  const [savedPicksLoading, setSavedPicksLoading] = useState(true);
+  const [savedPicksError, setSavedPicksError] = useState("");
+
+  const [claimedUpsetGameIds, setClaimedUpsetGameIds] = useState([]);
+
+  const [ownUpsetGameId, setOwnUpsetGameId] = useState(null);
+
+  function hasGameStarted(kickoff) {
+    if (!kickoff) return false;
+
+    return new Date() >= new Date(kickoff);
+  }
+
+  async function loadClaimedUpsetGames() {
+    const { data, error } = await supabase.rpc(
+      "get_claimed_upset_games",
+      {
+        p_season: 2026,
+        p_week: 1,
+      }
+    );
+
+    if (error) {
+      console.error("Error loading claimed upset games:", error);
+      return;
+    }
+
+    const claimedIds = (data ?? []).map(
+      (row) => row.external_game_id
+    );
+
+    setClaimedUpsetGameIds(claimedIds);
+  }
+
+
+
   useEffect(() => {
+  async function loadFeaturedGames() {
+    setGamesLoading(true);
+    setGamesError("");
+
+    const { data, error } = await supabase
+      .from("games")
+      .select("*")
+      .eq("season", 2026)
+      .eq("week", 1)
+      .eq("is_featured", true)
+      .order("kickoff", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      setGamesError(error.message);
+      setGamesLoading(false);
+      return;
+    }
+
+    setFeaturedGames(data ?? []);
+    setGamesLoading(false);
+  }
+
+  loadFeaturedGames();
+  }, []);
+
+ useEffect(() => {
     async function loadUpsetOptions() {
       setIsLoadingUpsets(true);
       setUpsetError("");
 
       const { data, error } = await supabase.functions.invoke(
         "get-upset-options",
-      {
-        body: {
-          season: 2026,
-          week: 1,
-        },
+        {
+          body: {
+            season: 2026,
+            week: 1,
+          },
+        }
+      );
+
+      if (error) {
+        setUpsetError(error.message);
+        setIsLoadingUpsets(false);
+        return;
       }
-    );
 
-    if (error) {
-      setUpsetError(error.message);
+      console.log("Upset options received:", data);
+      console.log("First upset option:", data?.[0]);
+
+      setUpsetOptions(data ?? []);
+
+      if (data?.length > 0) {
+        setSelectedSportsbook(data[0].sportsbookKey);
+      }
+
       setIsLoadingUpsets(false);
-      return;
-    }
-    
-    console.log("Upset options received:", data);
-    console.log("First upset option:", data?.[0]);
-    setUpsetOptions(data  ?? []);
-
-    if (data?.length > 0) {
-      setSelectedSportsbook(data[0].sportsbookKey);
     }
 
-    setIsLoadingUpsets(false);
-  }
-
-  loadUpsetOptions();
+    loadUpsetOptions();
   }, []);
 
-  const sportbooks = [
+
+  async function loadSavedPicks() {
+    setSavedPicksLoading(true);
+    setSavedPicksError("");
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setSavedPicksError(
+        "You must be logged in to view saved picks."
+      );
+      setSavedPicksLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("picks")
+      .select(`
+        id,
+        game_id,
+        selected_team,
+        is_upset_pick,
+        spread_at_pick,
+        sportsbook,
+        points_awarded,
+        games (
+          external_game_id,
+          home_team,
+          away_team,
+          kickoff
+        )
+      `)
+      .eq("user_id", user.id)
+      .eq("season", 2026)
+      .eq("week", 1)
+      .order("is_upset_pick", { ascending: true });
+
+    if (error) {
+      console.error("Error loading saved picks:", error);
+      setSavedPicksError(error.message);
+      setSavedPicksLoading(false);
+      return;
+    }
+
+    const loadedPicks = data ?? [];
+
+      setSavedPicks(loadedPicks);
+
+      // Restore the 5 featured picks
+      const restoredFeaturedPicks = {};
+
+      loadedPicks
+        .filter((pick) => !pick.is_upset_pick)
+        .forEach((pick) => {
+          restoredFeaturedPicks[pick.game_id] = pick.selected_team;
+        });
+
+      setFeaturedPicks(restoredFeaturedPicks);
+
+      // Remember which upset game belongs to this user
+      const savedUpset = loadedPicks.find(
+        (pick) => pick.is_upset_pick
+      );
+
+      if (savedUpset?.games?.external_game_id) {
+        setOwnUpsetGameId(savedUpset.games.external_game_id);
+      }
+
+      setSavedPicksLoading(false);
+  }
+
+  useEffect(() => {
+    loadSavedPicks();
+  }, []);  
+
+  useEffect(() => {
+    loadClaimedUpsetGames();
+  }, []);
+
+  const sportsbooks = [
     ...new Map(
       upsetOptions.map((option) => [
         option.sportsbookKey,
@@ -101,28 +218,137 @@ function GameCard() {
           name: option.sportsbookName,
         },
       ])
-    ).values(),
-  ];
+    ).values(),];
+
+  useEffect(() => {
+    if (savedPicks.length === 0 || upsetOptions.length === 0) {
+      return;
+    }
+
+    const savedUpset = savedPicks.find(
+      (pick) => pick.is_upset_pick
+    );
+
+    if (!savedUpset?.games?.external_game_id) {
+      return;
+    }
+
+    const matchingOption = upsetOptions.find(
+      (option) =>
+        option.id === savedUpset.games.external_game_id &&
+        option.sportsbookName === savedUpset.sportsbook
+    );
+
+    if (matchingOption) {
+      setSelectedSportsbook(matchingOption.sportsbookKey);
+      setUpsetPick(matchingOption);
+    }
+  }, [savedPicks, upsetOptions]);
+
 
   const visibleUpsetOptions = upsetOptions.filter(
-    (option) => option.sportsbookKey === selectedSportsbook
+    (option) => 
+      option.sportsbookKey === selectedSportsbook &&
+      (
+      !claimedUpsetGameIds.includes(option.id) ||
+      option.id === ownUpsetGameId
+      )
   );
 
 
-  function submitPick() {
-    alert(`You picked 
-      ${selectedTeam1} 
-      ${selectedTeam2}
-      ${selectedTeam3}
-      ${selectedTeam4}
-      ${selectedTeam5}
-      Upset Pick: ${upsetPick.underdog} +${upsetPick.spread}
-      vs ${upsetPick.favorite}
-      using ${upsetPick.sportsbookName}
-      `);
-  }
+  async function submitPick() {
+    setSubmitMessage("");
 
-  
+    if (Object.keys(featuredPicks).length !== 5) {
+      setSubmitMessage("Please pick a team for all 5 games.");
+      return;
+    }
+
+    if (!upsetPick) {
+      setSubmitMessage("Please choose an upset pick.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setSubmitMessage("You must be logged in to submit picks.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const featuredPickRows = featuredGames.map((game) => ({
+      user_id: user.id,
+      game_id: game.id,
+      season: 2026,
+      week: 1,
+      selected_team: featuredPicks[game.id],
+      is_upset_pick: false,
+      spread_at_pick: null,
+      sportsbook: null,
+    }));
+
+    console.log("Rows being saved:", featuredPickRows);
+
+    const { error } = await supabase
+      .from("picks")
+      .upsert(featuredPickRows, {
+        onConflict: "user_id,game_id",
+      });
+
+    if (error) {
+      console.error("Error saving picks:", error);
+      setSubmitMessage(`Error saving picks: ${error.message}`);
+      setIsSubmitting(false);
+      return;
+    }
+
+
+    // Save the upset pick
+    const { error: upsetSaveError } = await supabase.rpc(
+    "claim_upset_pick",
+    {
+      p_external_game_id: upsetPick.id,
+      p_season: 2026,
+      p_week: 1,
+      p_home_team: upsetPick.homeTeam,
+      p_away_team: upsetPick.awayTeam,
+      p_kickoff: upsetPick.kickoff,
+      p_underdog: upsetPick.underdog,
+      p_spread: upsetPick.spread,
+      p_sportsbook: upsetPick.sportsbookName,
+    }
+    );
+
+    if (upsetSaveError) {
+      console.error("Error saving upset:", upsetSaveError);
+
+      if (upsetSaveError.message.includes("already been selected")) {
+        setSubmitMessage(
+          "That upset was just picked by another player. Please choose another upset."
+        );
+      } else {
+        setSubmitMessage(
+          `Error saving upset: ${upsetSaveError.message}`
+        );
+      }
+
+      setIsSubmitting(false);
+      return;
+    }
+
+    setSubmitMessage("All 6 picks submitted successfully!");
+
+    await loadSavedPicks();
+    await loadClaimedUpsetGames();
+    
+    setIsSubmitting(false);
+  }
 
 
 
@@ -138,21 +364,56 @@ function GameCard() {
         textAlign: "center"
       }}
     >
-      <h2>Game 1</h2> 
-      <PickButton team={games[0].home} selected={selectedTeam1} onclick={() => chooseTeam1(games[0].home)} />  VS    <PickButton team={games[0].away} selected={selectedTeam1} onclick={() => chooseTeam1(games[0].away)} />
+      {gamesLoading && <p>Loading this week's games...</p>}
 
-      <h2>Game 2</h2>  
-      <PickButton team={games[1].home} selected={selectedTeam2} onclick={() => chooseTeam2(games[1].home)} />  VS    <PickButton team={games[1].away} selected={selectedTeam2} onclick={() => chooseTeam2(games[1].away)} />
+      {gamesError && (
+      <p style={{ color: "red" }}>
+      Error loading games: {gamesError}
+      </p>
+      )}
 
-      
-      <h2>Game 3</h2>
-      <PickButton team={games[2].home} selected={selectedTeam3} onclick={() => chooseTeam3(games[2].home)} />  VS    <PickButton team={games[2].away} selected={selectedTeam3} onclick={() => chooseTeam3(games[2].away)} />
-      
-      <h2>Game 4</h2>
-      <PickButton team={games[3].home} selected={selectedTeam4} onclick={() => chooseTeam4(games[3].home)} />  VS    <PickButton team={games[3].away} selected={selectedTeam4} onclick={() => chooseTeam4(games[3].away)} />
+      {featuredGames.map((game, index) => (
+      <div key={game.id}>
+      <h2>Game {index + 1}</h2>
 
-      <h2>Game 5</h2>
-      <PickButton team={games[4].home} selected={selectedTeam5} onclick={() => chooseTeam5(games[4].home)} />  VS    <PickButton team={games[4].away} selected={selectedTeam5} onclick={() => chooseTeam5(games[4].away)} />
+      <PickButton
+        team={game.home_team}
+        selected={featuredPicks[game.id]}
+        disabled={hasGameStarted(game.kickoff)}
+        onclick={() => {
+          if (!hasGameStarted(game.kickoff)) {
+            chooseFeaturedTeam(game.id, game.home_team)
+        }
+      }}
+      />
+
+      {" VS "}
+
+      <PickButton
+        team={game.away_team}
+        selected={featuredPicks[game.id]}
+        disabled={hasGameStarted(game.kickoff)}
+        onclick={() => {
+          if (!hasGameStarted(game.kickoff)) {
+          chooseFeaturedTeam(game.id, game.away_team)
+        }
+      }}
+      />
+
+      {hasGameStarted(game.kickoff) && (
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#666",
+          }}
+        >
+          🔒 Pick locked — game has started
+        </p>
+      )}
+    </div>
+  ))}      
+  
+
       
       
       <h2>Upset Pick</h2>
@@ -167,11 +428,11 @@ function GameCard() {
         </p>
       )}
 
-      {!isLoadingUpsets && !upsetError && sportbooks.length === 0 && (
+      {!isLoadingUpsets && !upsetError && sportsbooks.length === 0 && (
         <p>No upset options available.</p>
       )}
 
-      {sportbooks.length > 0 && (
+      {sportsbooks.length > 0 && (
         <label
           style={{
             display: "grid",
@@ -192,7 +453,7 @@ function GameCard() {
               borderRadius: "16px",
             }}
           >
-            {sportbooks.map((book) => (
+            {sportsbooks.map((book) => (
               <option key={book.key} value={book.key}>
                 {book.name}
               </option>
@@ -204,14 +465,20 @@ function GameCard() {
       {visibleUpsetOptions.map((option) => (
         <button
           key={`${option.id}-${option.sportsbookKey}`}
-          onClick={() => setUpsetPick(option)}
+          onClick={() => {
+            if (!hasGameStarted(option.kickoff)) {
+              setUpsetPick(option);
+            }
+          }}
           style={{
             width: "100%",
             padding: "12px",
             marginTop: "10px",
             borderRadius: "8px",
             border: "2px solid black",
-            cursor: "pointer",
+            cursor: hasGameStarted(option.kickoff)
+              ? "not-allowed"
+              : "pointer",
             backgroundColor:
               upsetPick?.id === option.id &&
               upsetPick?.sportsbookKey === option.sportsbookKey
@@ -229,7 +496,11 @@ function GameCard() {
       ))}
       <button
         onClick={submitPick}
-        disabled={!selectedTeam1 || !selectedTeam2 || !selectedTeam3 || !selectedTeam4 || !selectedTeam5 || !upsetPick}
+        disabled={
+          Object.keys(featuredPicks).length !== 5 ||
+          !upsetPick ||
+          isSubmitting
+        }
         style={{
           width: "100%",
           marginTop: "25px",
@@ -239,12 +510,89 @@ function GameCard() {
           color: "white",
           border: "none",
           borderRadius: "8px",
-          cursor: selectedTeam1 && selectedTeam2 && selectedTeam3 && selectedTeam4 && selectedTeam5 && upsetPick ? "pointer" : "not-allowed",
-          opacity: selectedTeam1 && selectedTeam2 && selectedTeam3 && selectedTeam4 && selectedTeam5 && upsetPick ? 1 : 0.5
+          cursor:
+            Object.keys(featuredPicks).length === 5 && upsetPick
+              ? "pointer"
+              : "not-allowed",
+          opacity:
+            Object.keys(featuredPicks).length === 5 && upsetPick
+              ? 1
+              : 0.5
         }}
       >
-        Submit Pick
+        {isSubmitting ? "Submitting..." : "Submit Pick"}
       </button>
+
+      {submitMessage && (
+        <p
+          style={{
+            marginTop: "15px",
+            fontWeight: "bold",
+          }}
+        >
+          {submitMessage}
+        </p>
+      )}
+
+      <div
+        style={{
+          marginTop: "30px",
+          paddingTop: "20px",
+          borderTop: "1px solid #ddd",
+          textAlign: "left",
+        }}
+      >
+        <h2>My Week 1 Picks</h2>
+
+        {savedPicksLoading && <p>Loading saved picks...</p>}
+
+        {savedPicksError && (
+          <p style={{ color: "red" }}>
+            Error loading saved picks: {savedPicksError}
+          </p>
+        )}
+
+        {!savedPicksLoading &&
+          !savedPicksError &&
+          savedPicks.length === 0 && (
+            <p>You have not submitted picks yet.</p>
+          )}
+
+        {savedPicks.map((pick) => (
+          <div
+            key={pick.id}
+            style={{
+              padding: "10px 0",
+              borderBottom: "1px solid #eee",
+            }}
+          >
+            {pick.is_upset_pick ? (
+              <>
+                <strong>Upset:</strong>{" "}
+                {pick.selected_team} +{pick.spread_at_pick}
+                {pick.sportsbook && ` (${pick.sportsbook})`}
+              </>
+            ) : (
+              <>
+                <strong>{pick.selected_team}</strong>
+                {pick.games && (
+                  <>
+                    {" "}
+                    — {pick.games.away_team} vs {pick.games.home_team}
+                  </>
+                )}
+              </>
+            )}
+
+            <div style={{ fontSize: "14px", marginTop: "4px" }}>
+              Points: {pick.points_awarded}
+            </div>
+          </div>
+        ))}
+      </div>
+
+
+
     </div>
   );
 }
