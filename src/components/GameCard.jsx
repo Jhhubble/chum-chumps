@@ -257,11 +257,15 @@ function GameCard() {
       )
   );
 
+  const allFeaturedGamesPicked =
+    featuredGames.length === 5 &&
+    featuredGames.every((game) => Boolean(featuredPicks[game.id]));
+
 
   async function submitPick() {
     setSubmitMessage("");
 
-    if (Object.keys(featuredPicks).length !== 5) {
+    if (!allFeaturedGamesPicked) {
       setSubmitMessage("Please pick a team for all 5 games.");
       return;
     }
@@ -499,7 +503,7 @@ function GameCard() {
       <button
         onClick={submitPick}
         disabled={
-          Object.keys(featuredPicks).length !== 5 ||
+          !allFeaturedGamesPicked ||
           !upsetPick ||
           isSubmitting
         }
@@ -513,11 +517,11 @@ function GameCard() {
           border: "none",
           borderRadius: "8px",
           cursor:
-            Object.keys(featuredPicks).length === 5 && upsetPick
+            allFeaturedGamesPicked && upsetPick
               ? "pointer"
               : "not-allowed",
           opacity:
-            Object.keys(featuredPicks).length === 5 && upsetPick
+            allFeaturedGamesPicked && upsetPick
               ? 1
               : 0.5
         }}
