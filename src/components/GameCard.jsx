@@ -84,6 +84,8 @@ function GameCard() {
       return;
     }
 
+    console.log("Featured games received:", data);
+
     setFeaturedGames(data ?? []);
     setGamesLoading(false);
   }
