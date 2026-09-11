@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
+const CURRENT_SEASON = 2026;
+const CURRENT_WEEK = 2;
+
 function Standings() {
   const [standings, setStandings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,11 +14,10 @@ function Standings() {
       setLoading(true);
       setErrorMessage("");
 
-      // Get points from picks
       const { data: picks, error: picksError } = await supabase
         .from("picks")
         .select("user_id, week, points_awarded")
-        .eq("season", 2026);
+        .eq("season", CURRENT_SEASON);
 
       if (picksError) {
         console.error("Error loading picks:", picksError);
@@ -24,7 +26,6 @@ function Standings() {
         return;
       }
 
-      // Get picking team names
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id, picking_team_name");
@@ -36,36 +37,42 @@ function Standings() {
         return;
       }
 
-      // Add up each user's points
-    const seasonTotals = {};
-    const weekTotals = {};
+      const seasonTotals = {};
+      const weekTotals = {};
 
-    (picks ?? []).forEach((pick) => {
-      const points = pick.points_awarded ?? 0;
+      (picks ?? []).forEach((pick) => {
+        const points = pick.points_awarded ?? 0;
 
-      if (!seasonTotals[pick.user_id]) {
-        seasonTotals[pick.user_id] = 0;
-      }
-
-      seasonTotals[pick.user_id] += points;
-
-      if (pick.week === 1) {
-        if (!weekTotals[pick.user_id]) {
-          weekTotals[pick.user_id] = 0;
+        if (!seasonTotals[pick.user_id]) {
+          seasonTotals[pick.user_id] = 0;
         }
 
-        weekTotals[pick.user_id] += points;
-      }
-    });
+        seasonTotals[pick.user_id] += points;
 
-const leaderboard = (profiles ?? [])
-  .map((profile) => ({
-    userId: profile.id,
-    teamName: profile.picking_team_name,
-    weekPoints: weekTotals[profile.id] ?? 0,
-    totalPoints: seasonTotals[profile.id] ?? 0,
-  }))
-  .sort((a, b) => b.totalPoints - a.totalPoints);
+        if (pick.week === CURRENT_WEEK) {
+          if (!weekTotals[pick.user_id]) {
+            weekTotals[pick.user_id] = 0;
+          }
+
+          weekTotals[pick.user_id] += points;
+        }
+      });
+
+      const leaderboard = (profiles ?? [])
+        .map((profile) => ({
+          userId: profile.id,
+          teamName: profile.picking_team_name,
+          weekPoints: weekTotals[profile.id] ?? 0,
+          totalPoints: seasonTotals[profile.id] ?? 0,
+        }))
+        .sort((a, b) => {
+          if (b.totalPoints !== a.totalPoints) {
+            return b.totalPoints - a.totalPoints;
+          }
+
+          return b.weekPoints - a.weekPoints;
+        });
+
       setStandings(leaderboard);
       setLoading(false);
     }
@@ -106,8 +113,9 @@ const leaderboard = (profiles ?? [])
               ? "🥉"
               : `${index + 1}.`}
             {" "}
-            {player.teamName} 
-            {" — "} {player.points} pts
+            {player.teamName}
+            {" — "}
+            Week {CURRENT_WEEK}: {player.weekPoints} pts
             {" | "}
             Total: {player.totalPoints} pts
           </p>

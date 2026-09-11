@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import PickButton from "./PickButton.jsx";
 
-
+const CURRENT_SEASON = 2026;
+const CURRENT_WEEK = 2;
 
 
 function GameCard() {
@@ -45,8 +46,8 @@ function GameCard() {
     const { data, error } = await supabase.rpc(
       "get_claimed_upset_games",
       {
-        p_season: 2026,
-        p_week: 1,
+        p_season: CURRENT_SEASON,
+        p_week: CURRENT_WEEK,
       }
     );
 
@@ -72,8 +73,8 @@ function GameCard() {
     const { data, error } = await supabase
       .from("games")
       .select("*")
-      .eq("season", 2026)
-      .eq("week", 1)
+      .eq("season", CURRENT_SEASON)
+      .eq("week", CURRENT_WEEK)
       .eq("is_featured", true)
       .order("kickoff", { ascending: true });
 
@@ -102,8 +103,8 @@ function GameCard() {
         "get-upset-options",
         {
           body: {
-            season: 2026,
-            week: 1,
+            season: CURRENT_SEASON,
+            week: CURRENT_WEEK,
           },
         }
       );
@@ -165,8 +166,8 @@ function GameCard() {
         )
       `)
       .eq("user_id", user.id)
-      .eq("season", 2026)
-      .eq("week", 1)
+      .eq("season", CURRENT_SEASON)
+      .eq("week", CURRENT_WEEK)
       .order("is_upset_pick", { ascending: true });
 
     if (error) {
@@ -291,8 +292,8 @@ function GameCard() {
     const featuredPickRows = featuredGames.map((game) => ({
       user_id: user.id,
       game_id: game.id,
-      season: 2026,
-      week: 1,
+      season: CURRENT_SEASON,
+      week: CURRENT_WEEK ,
       selected_team: featuredPicks[game.id],
       is_upset_pick: false,
       spread_at_pick: null,
@@ -320,8 +321,8 @@ function GameCard() {
     "claim_upset_pick",
     {
       p_external_game_id: upsetPick.id,
-      p_season: 2026,
-      p_week: 1,
+      p_season: CURRENT_SEASON,
+      p_week: CURRENT_WEEK ,
       p_home_team: upsetPick.homeTeam,
       p_away_team: upsetPick.awayTeam,
       p_kickoff: upsetPick.kickoff,
@@ -548,7 +549,7 @@ function GameCard() {
           textAlign: "left",
         }}
       >
-        <h2>My Week 1 Picks</h2>
+        <h2>My Week {CURRENT_WEEK} Picks</h2>
 
         {savedPicksLoading && <p>Loading saved picks...</p>}
 
